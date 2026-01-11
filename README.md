@@ -2,7 +2,7 @@
 Junior Smart Contract Engineer | Solidity / DeFi
 
 📧 macanthonyeke@gmail.com  
-🐦 X (Twitter): https://x.com/macanthonyeke  
+𝕏 X (Twitter): https://x.com/macanthonyeke  
 💻 GitHub: https://github.com/macanthonyeke  
 📍 Nigeria (Remote)
 
