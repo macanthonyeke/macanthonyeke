@@ -1,10 +1,10 @@
 # Invariants Quiz
 
-1. Your invariant says `assets >= liabilities`, but liabilities exclude pending rewards and liquidation penalties. Provide a scenario where the invariant passes while protocol is economically insolvent.
-2. A timelock requires 48 hours before upgrades, but emergency mode can shorten delay. What temporal invariant should be enforced to prevent governance-delay bypass abuse?
-3. In Foundry invariant tests, random call sequences never hit a known bug that appears in production bundles. What control-flow assumptions are missing from your harness design?
-4. Contract accounting uses internal ledger plus external strategy NAV report. How would you formulate an invariant that tolerates bounded oracle lag but still catches real solvency breaks?
-5. A proxy upgrade changes storage layout for `totalDebt` and `totalShares`. Which pre/post-upgrade invariants would you run to detect silent corruption before enabling user actions?
-6. System allows admin rescue of stray tokens. Describe a testable invariant that distinguishes legitimate rescue from theft of user-accounted assets.
-7. Given sequence `pause -> partial withdraws -> unpause -> liquidations`, what invariant should guarantee user fairness and prevent queue-jumping side effects?
-8. During incident response, multiple invariants fail simultaneously. How do you triage root-cause invariant versus downstream symptom invariants to guide safe recovery?
+1. A protocol invariant states `assets >= liabilities`, but liabilities exclude pending rewards. Describe a failing scenario where this invariant passes.
+2. How would you encode a temporal invariant that enforces governance delay across queue/cancel/requeue edge cases?
+3. Why can per-function unit tests pass while sequence-level invariants fail in production bundles?
+4. A vault receives forced ETH. How should solvency invariants be reframed to tolerate this without masking real insolvency?
+5. What pre- and post-upgrade invariants should run to detect storage layout corruption before reopening user actions?
+6. How do you define an invariant that allows token rescue operations but forbids rescue of user-accounted assets?
+7. In pause/unpause workflows, what invariant prevents queue-jumping and unfair withdrawal ordering?
+8. During an incident with many broken properties, how do you isolate root-cause invariant breach from downstream symptoms?

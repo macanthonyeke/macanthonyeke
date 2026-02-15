@@ -1,10 +1,10 @@
 # Access Control Quiz
 
-1. A protocol has roles: `DEFAULT_ADMIN`, `RISK_ADMIN`, and `PAUSER`. `RISK_ADMIN` can set LTV up to 98%, and `PAUSER` can unpause without delay. What role sequence could still produce catastrophic unauthorized-like outcomes while each call is technically authorized?
-2. You audit an upgradeable proxy where implementation initializer is callable and sets `owner`. What exploit timeline would let an attacker pivot from implementation ownership to protocol fund theft?
-3. Governance is timelocked, but an emergency multisig can upgrade instantly. What concrete guardrails would you require so emergency powers cannot become a permanent governance bypass?
-4. A plugin system uses `delegatecall` into third-party modules approved by admin vote. What storage-level privilege escalation checks would you perform before approving this architecture?
-5. A token bridge controls privileged minting on destination chain via relayer signatures. If relayer quorum degrades during outage, what access-control invariant can break first, and how?
-6. Assume parameter bounds exist on-chain, but governance can change those bounds. How can this meta-privilege invalidate the original safety model?
-7. A protocol uses EIP-2771 trusted forwarder support. How could misconfigured forwarder trust produce unauthorized privileged execution despite role checks on `_msgSender()`?
-8. Post-mortem shows no unauthorized function calls, yet users lost funds after “legitimate” admin operations. How would you distinguish an authorization bug from an overpowered-role design flaw?
+1. A protocol uses `DEFAULT_ADMIN_ROLE` as admin for every role. Which sequence of valid calls can produce practical superuser compromise without an explicit auth bug?
+2. How can an uninitialized implementation contract in a UUPS setup become a stepping stone to upgrade control?
+3. Governance is timelocked, but an emergency role can perform instant upgrades. What controls would you require to keep this safe?
+4. A plugin architecture relies on `delegatecall` to approved modules. Which storage-level checks are required to prevent privilege overwrite?
+5. Parameter bounds exist, but governance can change the bounds. How does this meta-permission alter your threat model?
+6. A trusted forwarder is misconfigured. How can `_msgSender()`-based auth be bypassed in privileged paths?
+7. In a bridge-controlled mint system, what invariant should hold when relayer quorum degrades?
+8. How would you distinguish “authorized misuse” from “unauthorized access” in a post-incident control-plane analysis?

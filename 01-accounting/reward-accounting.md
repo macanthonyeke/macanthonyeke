@@ -1,82 +1,79 @@
-# Reward Accounting: Economic Correctness Under Adversarial Ordering
+# Reward Accounting
 
-## 1) Overview
-Reward systems fail when accounting precision, funding assumptions, or update ordering diverge from actual token flows. In production, this manifests as repeat claims, unfair dilution, underfunded pools, and slow insolvency via rounding/dust extraction.
+## 1) Title & clear overview
+Reward accounting failures are economic correctness failures. Even if arithmetic compiles and unit tests pass, users can be overpaid, underpaid, or selectively paid depending on timing, rounding, and funding gaps.
 
-## 2) Core Mental Model
-A robust reward engine is a conservation system:
-- **Funding source** defines maximum distributable emissions.
-- **Global index/accumulator** maps time and stake to entitlement.
-- **User checkpoints** prevent replay or double-counting.
-- **Residual dust accounting** tracks truncation remainder explicitly.
+Critical risk classes:
+- Underfunded emissions
+- Rounding residue extraction
+- Deposit/claim race conditions
+- Checkpoint replay issues
 
-Audit question: can any user action sequence produce reward outflow that exceeds funded entitlement after rounding and fees?
+## 2) Core mental model
+Track four ledgers:
+1. Funded rewards
+2. Distributed rewards
+3. Outstanding liabilities
+4. Tracked dust/residuals
 
-## 3) Minimal Vulnerable Example (underfunding + checkpoint flaw)
+A secure system conserves value across these ledgers under adversarial ordering.
+
+## 3) Minimal vulnerable example (Solidity)
 ```solidity
 contract Farm {
-    uint256 public accRewardPerShare; // scaled by 1e12
-    uint256 public totalStaked;
-    uint256 public fundedRewards;     // tokens funded by treasury
+    uint256 public accRewardPerShare; // 1e12 precision
+    uint256 public fundedRewards;
     uint256 public paidRewards;
 
-    mapping(address => uint256) public stake;
+    mapping(address => uint256) public amount;
     mapping(address => uint256) public rewardDebt;
 
-    function notifyReward(uint256 amount) external {
-        fundedRewards += amount;
-        // Missing transfer-in verification and emission cap coupling.
+    function notifyReward(uint256 amt) external {
+        fundedRewards += amt; // missing transfer-in verification
     }
 
     function claim() external {
-        uint256 pending = (stake[msg.sender] * accRewardPerShare) / 1e12 - rewardDebt[msg.sender];
+        uint256 pending = amount[msg.sender] * accRewardPerShare / 1e12 - rewardDebt[msg.sender];
         rewardToken.transfer(msg.sender, pending);
         paidRewards += pending;
-        // Missing rewardDebt update => repeat claim possibility.
+        // rewardDebt not updated: replay claim possible
     }
 }
 ```
 
-## 4) Realistic Exploit Scenario (rounding + race + underfunding)
-1. Pool uses low-precision index scaling and frequent small emissions.
-2. Attacker splits stake across many addresses to maximize favorable rounding on each claim path.
-3. Attacker bots monitor `notifyReward` and front-run with minimal stake right before index update, then claim immediately.
-4. Due to poor checkpoint ordering, attacker repeatedly captures dust and short-window emissions disproportionately.
-5. Treasury accounting assumes nominal emissions, but actual claimable outflow drifts higher over time.
-6. Pool becomes underfunded; late honest claimants are reverted or partially paid.
+## 4) Realistic exploit scenario with step-by-step flow
+1. Protocol uses coarse precision and frequent reward updates.
+2. Attacker splits stake over many addresses to maximize rounding advantage.
+3. Bots front-run large reward top-ups with short-duration deposits.
+4. Attacker claims repeatedly before checkpoints are correctly advanced.
+5. Dust and timing edge compound into meaningful extraction.
+6. Funded pool becomes undercollateralized versus liabilities.
+7. Late users receive failed or partial payouts.
 
-This is economically severe even without an obvious “drain in one tx” exploit.
+## 5) Defensive design patterns + mitigation strategies
+- Verify funding transfer-in before increasing distributable rewards.
+- Use high precision and explicit dust tracking/recycling.
+- Strict order: update pool -> settle pending -> mutate stake -> update debt.
+- Consider epoch snapshots/minimum staking duration to reduce sniping.
+- Enforce `paid + outstanding <= funded - trackedDust`.
+- Handle fee-on-transfer/rebasing token behavior explicitly or reject unsupported assets.
 
-## 5) Defensive Design Patterns + Mitigation Strategies
-- **Funding-first discipline**: require verified reward token transfer-in before increasing distributable emissions.
-- **High-precision math + dust buckets**: track cumulative residuals and recycle dust deterministically.
-- **Strict checkpoint ordering**:
-  - settle pending rewards,
-  - mutate stake,
-  - update reward debt/index snapshots.
-- **Front-run resistance**:
-  - epoch-based accrual snapshots,
-  - minimum staking duration for rewards,
-  - anti-sniping windows where appropriate.
-- **Underfunding guards**: enforce `paidRewards + outstandingLiabilities <= fundedRewards`.
-- **Token-behavior handling**: support fee-on-transfer/rebasing tokens explicitly or reject them.
+## 6) EVM-level reasoning and execution nuance
+- Integer truncation is deterministic and can be adversarially harvested at scale.
+- Mempool ordering enables timing strategies around index updates.
+- External token calls can trigger callbacks/reentrancy in claim flows.
+- Partial failures in multi-reward distributions can corrupt liabilities if atomicity is not enforced.
 
-## 6) EVM-Level Reasoning and Execution Nuance
-- Integer truncation is deterministic but exploitable when users can choose action granularity and timing.
-- External token calls can re-enter accounting paths if hooks/callback standards are used.
-- Mempool ordering enables strategic deposits/claims around emission update transactions.
-- Multi-token reward distribution must be atomic or compensating; partial success can corrupt liabilities.
+## 7) Common mistakes developers make
+- Assuming “small dust” is economically irrelevant.
+- Treating funding assumptions as off-chain ops concerns.
+- Updating debt after external transfer.
+- Not testing address splitting and bundle-based timing attacks.
+- Ignoring same-block deposit/claim permutations.
 
-## 7) Common Developer Mistakes
-- Assuming reward funding and reward accounting are naturally synchronized.
-- Not tracking dust explicitly; writing it off as negligible.
-- Updating debt/index after external transfers.
-- Ignoring address-splitting strategies in fairness analysis.
-- Designing tests for “average user” behavior only, not adversarial timing sequences.
-
-## 8) Invariants That Must Hold
+## 8) Strong, clear invariants that must hold
 - Total accrued rewards must always be <= funded emissions minus tracked dust.
-- For any user, repeated `claim()` without new accrual must produce zero net payout.
-- Sum of all users’ claimable + already paid rewards must match funded emissions within explicit dust tolerance.
-- Reward liabilities must remain satisfiable by on-chain reserves under defined token-behavior assumptions.
-- Ordering of deposit/withdraw/claim in the same block must not create economically free value.
+- Repeated claims without new accrual must produce zero incremental payout.
+- Aggregate paid + claimable must reconcile with emissions within documented precision bounds.
+- Reward liabilities must remain satisfiable by realizable reserves under supported token semantics.
+- No same-block action ordering should create economically free value.

@@ -1,79 +1,72 @@
-# Invariants: From Security Intent to Testable Guarantees
+# Invariants
 
-## 1) Overview
-Invariants are enforceable statements about protocol safety that must hold across *all* reachable states, not just happy-path tests. Strong audits translate informal claims (“we are solvent”) into machine-checkable properties suitable for Foundry invariants, Echidna campaigns, and symbolic analysis.
+## 1) Title & clear overview
+Invariants convert security intent into testable guarantees. They are not prose aspirations; they are properties that must hold across every reachable state and call sequence.
 
-## 2) Core Mental Model
-Treat protocol behavior as a state machine with adversarial scheduling.
+In practice, strong audits pair invariants with fuzzing, stateful property tests, and adversarial sequence generation.
 
-Practical classification:
-- **State invariants**: always true in every post-state.
-- **Temporal invariants**: true across time windows/order constraints.
-- **Control-flow invariants**: true regardless of path composition across multiple functions/contracts.
+## 2) Core mental model
+Classify invariants into:
+- State invariants (always true after each transition)
+- Temporal invariants (true over time windows)
+- Control-flow invariants (true regardless of function sequencing)
 
-If a property depends on call order, role sequence, or time delay, encode that explicitly.
+If a claim depends on order, delays, or role transitions, encode that explicitly.
 
-## 3) Minimal Vulnerable Example (solvency desync)
+## 3) Minimal vulnerable example (Solidity)
 ```solidity
 contract Vault {
-    mapping(address => uint256) public shares;
-    uint256 public totalShares;
     uint256 public accountedAssets;
+    mapping(address => uint256) public balances;
 
     function deposit() external payable {
-        shares[msg.sender] += msg.value;
-        totalShares += msg.value;
+        balances[msg.sender] += msg.value;
         accountedAssets += msg.value;
     }
 
     function sweep(address to, uint256 amt) external onlyOwner {
         payable(to).transfer(amt);
-        // accountedAssets not decremented => accounting no longer maps to real assets
+        // missing accountedAssets decrement => solvency signal drift
     }
 }
 ```
 
-## 4) Realistic Exploit / Failure Scenario (step-by-step)
-1. Users deposit and system reports healthy collateralization from `accountedAssets`.
-2. Governance executes treasury sweep during market stress.
-3. Real balance drops, but liabilities and health metrics keep using stale accounting.
-4. Integrators continue allowing borrowing/withdrawals on false solvency signal.
-5. Cascade emerges: failed withdrawals, liquidations at bad prices, and governance panic actions.
+## 4) Realistic exploit scenario with step-by-step flow
+1. Users deposit; protocol reports healthy collateralization.
+2. Owner/governance performs treasury sweep.
+3. Internal accounting remains unchanged while real assets drop.
+4. Integrators keep allowing borrows/withdrawals based on stale solvency metrics.
+5. Stress event triggers failed withdrawals and cascading liquidations.
 
-No single user function is “broken” in isolation; the invariant failed across privileged and user paths.
+## 5) Defensive design patterns + mitigation strategies
+- Write invariants as executable checks in Foundry/Echidna.
+- Assert properties after every mutating entry point.
+- Add temporal invariants for governance delays and emissions caps.
+- Use compositional accounting checks (ledger vs actual balances vs model assumptions).
+- Gate critical transitions with explicit invariant assertions and emergency breakers.
 
-## 5) Defensive Design Patterns + Mitigation Strategies
-- **Write invariants as executable specs** in tests and docs.
-- **Cross-function assertion design**: validate properties after every mutating entry point.
-- **Temporal guards**:
-  - governance delay invariants (e.g., min timelock before execution),
-  - emission-rate bounds per epoch,
-  - cooldown constraints on sensitive transitions.
-- **Composable accounting checks**: distinguish internal ledger, token balances, and unrealized PnL assumptions.
-- **Failure-domain partitioning**: isolate non-critical functions so invariant breach cannot spread instantly.
+## 6) EVM-level reasoning and execution nuance
+- Forced transfers and token quirks break naive `balance == accounting` assumptions.
+- Delegatecall upgrades can alter storage semantics and invalidate previous invariants.
+- Multi-call bundles can violate properties that hold in isolated unit tests.
+- Control-flow integrity matters: same calls in different order can break temporal guarantees.
 
-### Example testable invariants (audit-ready)
-- `sum(userBalances) <= totalAccountedLiabilities`
+## 7) Common mistakes developers make
+- Vague invariants that cannot be tested.
+- Checking only end-of-test states rather than per-transition safety.
+- Omitting governance/admin paths from invariant scope.
+- Assuming token balance equals realizable asset value under all conditions.
+- Stopping at unit tests without adversarial sequence fuzzing.
+
+## 8) Strong, clear invariants that must hold
+- Internal liabilities must map to realizable on-chain assets within defined model assumptions.
+- Privileged and user call sequences must preserve solvency and authorization properties.
+- Reward emissions over any interval must stay within configured caps and funded limits.
+- Governance actions must satisfy delay/quorum constraints before effect.
+- No reachable sequence should violate documented safety properties.
+
+### Practical testable examples
+- `sumUserBalances <= totalLiabilities`
 - `paidRewards + outstandingRewards <= fundedRewards + dustTolerance`
-- `queuedUpgradeTimestamp + delay <= executionTimestamp`
-- `if pausedForInsolvency then newDebtMint == 0`
-
-## 6) EVM-Level Reasoning and Execution Nuance
-- Forced ETH transfers and unusual token semantics can invalidate naive balance equality checks.
-- Delegatecall/proxy upgrades can alter storage interpretation; invariants must be upgrade-aware.
-- Reentrancy and multi-call composition break assumptions that hold per-function but fail per-transaction path.
-- Control-flow integrity matters: the same set of calls in different order can violate temporal safety constraints.
-
-## 7) Common Developer Mistakes
-- Defining invariants too vaguely (“system remains safe”) to test.
-- Testing only end-of-test conditions instead of checking after each state transition.
-- Ignoring governance/admin paths when writing user-facing invariants.
-- Assuming on-chain token balances perfectly represent realizable assets without liquidity/penalty considerations.
-- Treating invariant testing as optional once unit tests pass.
-
-## 8) Strong Invariants That Must Hold
-- Internal accounting must map to on-chain realizable balances within explicit model assumptions.
-- Privileged and user call sequences must preserve solvency, authorization, and payout correctness.
-- Emissions and rewards over any time window must remain within configured caps and funded reserves.
-- Governance actions must satisfy declared delay and quorum constraints before taking effect.
-- No reachable control-flow path should produce a state that violates documented safety properties.
+- `queuedTimestamp + timelockDelay <= executionTimestamp`
+- `if insolvencyPause then newDebtMint == 0`
